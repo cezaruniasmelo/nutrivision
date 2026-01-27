@@ -1,0 +1,11 @@
+{
+  "name": "NutriVision AI - Clinical Intelligence",
+  "short_name": "NutriVision",
+  "description": "Plataforma de inteligência clínica e antropometria 3D avançada. Integração de exames laboratoriais, visão computacional e predição metabólica via Gemini AI.",
+  "theme_color": "#1c1c1c",
+  "background_color": "#1c1c1c",
+  "display": "standalone",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

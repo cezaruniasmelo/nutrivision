@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+    <title>NutriVision AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Jost Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Load MediaPipe globals with standard stable version -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Jost', 'sans-serif'], // Changed to Jost
+            },
+            borderRadius: {
+              '4xl': '2rem',
+              '5xl': '2.5rem',
+            },
+            colors: {
+              // Overriding Slate to match the "FitLife" Dark Charcoal Palette
+              slate: {
+                50: '#f7f7f7',
+                100: '#e3e3e3',
+                200: '#c8c8c8',
+                300: '#a4a4a4',
+                400: '#818181',
+                500: '#666666',
+                600: '#515151',
+                700: '#404040', 
+                800: '#262626', // Card Background (Soft Black)
+                900: '#1c1c1c', // Main Background (Dark Charcoal)
+                950: '#0f0f0f',
+              },
+              // Overriding Brand to match the "FitLife" Lime Green Palette
+              brand: {
+                50: '#f4fdf2',
+                100: '#e5fae0',
+                200: '#cdf5c4',
+                300: '#a6eb98',
+                400: '#a1ea93', // The specific Lime Green from design
+                500: '#a1ea93', // Primary
+                600: '#6cc959', // Darker interaction state
+                700: '#55a646',
+                800: '#46833b',
+                900: '#1e331a', // Deep green text
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #1c1c1c; /* New Dark Charcoal */
+        color: #f2f2f2; /* Soft White */
+      }
+      /* Soft Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1c1c1c;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #262626;
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #a1ea93;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "firebase/": "https://esm.sh/firebase@^12.7.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "pdfjs-dist": "https://esm.sh/pdfjs-dist@3.11.174"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
