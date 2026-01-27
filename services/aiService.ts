@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { PatientData, ReportData, Gender } from "../types";
 
 // Inicialização única conforme diretrizes
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const cleanJsonString = (text: string): string => {
   if (!text) return "{}";
@@ -68,17 +68,17 @@ export const extractClinicalData = async (input: { text?: string, imageBase64?: 
 
     const text = response.text;
     if (!text) return {};
-    
+
     let parsed = JSON.parse(cleanJsonString(text));
-    
+
     // Normalização de Gênero
     if (parsed.gender) {
-        const g = String(parsed.gender).toLowerCase();
-        if (g.startsWith("m") || g.includes("homem")) parsed.gender = Gender.MALE;
-        else if (g.startsWith("f") || g.includes("mulher")) parsed.gender = Gender.FEMALE;
-        else parsed.gender = Gender.OTHER;
+      const g = String(parsed.gender).toLowerCase();
+      if (g.startsWith("m") || g.includes("homem")) parsed.gender = Gender.MALE;
+      else if (g.startsWith("f") || g.includes("mulher")) parsed.gender = Gender.FEMALE;
+      else parsed.gender = Gender.OTHER;
     }
-    
+
     return parsed;
   } catch (error) {
     console.error("Erro na extração Flash:", error);
@@ -176,7 +176,7 @@ export const generateMetabolicReport = async (patientData: PatientData): Promise
 
     const text = response.text;
     if (!text) throw new Error("IA não retornou dados.");
-    
+
     return JSON.parse(cleanJsonString(text)) as ReportData;
   } catch (error) {
     console.error("Erro no relatório Pro:", error);
