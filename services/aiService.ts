@@ -2,9 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PatientData, ReportData, Gender } from "../types";
 
+// Inicialização única conforme diretrizes
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-// --- ANALISE DE DOCUMENTOS (OCR & VISION TO JSON) ---
 
 const cleanJsonString = (text: string): string => {
   if (!text) return "{}";
@@ -18,33 +17,19 @@ const cleanJsonString = (text: string): string => {
 };
 
 /**
- * Extrai dados clínicos de texto ou de uma imagem base64.
+ * ESTRATÉGIA FLASH: Extração de dados clínicos (OCR & Vision)
+ * Modelo: gemini-3-flash-preview (Veloz e Econômico)
  */
 export const extractClinicalData = async (input: { text?: string, imageBase64?: string, mimeType?: string }): Promise<Partial<PatientData>> => {
   try {
-    const systemPrompt = `
-      Você é um especialista em OCR médico e extração de dados clínicos.
-      Analise o documento (texto ou imagem) fornecido e extraia as métricas em JSON.
-      
-      Chaves esperadas:
-      - name (string)
-      - age (number)
-      - gender (string: "Masculino", "Feminino", "Outro")
-      - weight (number)
-      - height (number)
-      - glucose (number)
-      - cholesterol (number)
-      - bioimpedanceBF (number)
-
-      Regras:
-      - Extraia apenas o que estiver explícito ou óbvio no documento.
-      - Converta unidades para kg e cm se necessário.
-      - Se não encontrar um campo, omita-o do JSON.
-      - Retorne APENAS o JSON puro.
+    const systemInstruction = `
+      Você é um especialista em OCR médico de alta performance.
+      Sua tarefa é extrair métricas de saúde de documentos e retornar JSON PURO.
+      Converta unidades para kg e cm. 
+      Se o gênero for identificado, use apenas: "Masculino", "Feminino" ou "Outro".
     `;
 
-    let parts: any[] = [{ text: systemPrompt }];
-    
+    const parts: any[] = [];
     if (input.imageBase64 && input.mimeType) {
       parts.push({
         inlineData: {
@@ -52,30 +37,39 @@ export const extractClinicalData = async (input: { text?: string, imageBase64?: 
           mimeType: input.mimeType
         }
       });
-      parts.push({ text: "Analise esta imagem e extraia os dados clínicos." });
-    } else if (input.text) {
-      parts.push({ text: `Texto extraído do documento: \n\n ${input.text}` });
+      parts.push({ text: "Extraia os dados deste laudo/foto." });
+    } else {
+      parts.push({ text: `Analise o texto e extraia os dados: ${input.text}` });
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-flash-preview", // Roteado para o modelo econômico
       contents: { parts },
       config: {
+        systemInstruction,
         responseMimeType: "application/json",
         temperature: 0.1,
+        // Esquema simplificado para garantir conformidade no Flash
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            age: { type: Type.NUMBER },
+            gender: { type: Type.STRING },
+            weight: { type: Type.NUMBER },
+            height: { type: Type.NUMBER },
+            glucose: { type: Type.NUMBER },
+            cholesterol: { type: Type.NUMBER },
+            bioimpedanceBF: { type: Type.NUMBER }
+          }
+        }
       }
     });
 
-    const responseText = response.text;
-    if (!responseText) return {};
+    const text = response.text;
+    if (!text) return {};
     
-    let parsed: any = {};
-    try {
-        parsed = JSON.parse(cleanJsonString(responseText));
-    } catch (e) {
-        console.warn("Falha no parse do JSON multimodal", e);
-        return {};
-    }
+    let parsed = JSON.parse(cleanJsonString(text));
     
     // Normalização de Gênero
     if (parsed.gender) {
@@ -86,15 +80,16 @@ export const extractClinicalData = async (input: { text?: string, imageBase64?: 
     }
     
     return parsed;
-
   } catch (error) {
-    console.error("Erro na extração multimodal:", error);
+    console.error("Erro na extração Flash:", error);
     return {};
   }
 };
 
-// --- RELATÓRIO METABÓLICO ---
-
+/**
+ * ESTRATÉGIA PRO: Relatório Metabólico e Raciocínio Clínico
+ * Modelo: gemini-3-pro-preview (Inteligência Profunda + Grounding)
+ */
 const reportSchema = {
   type: Type.OBJECT,
   properties: {
@@ -110,7 +105,7 @@ const reportSchema = {
           metric: { type: Type.STRING },
           source_exam: { type: Type.STRING },
           source_vision: { type: Type.STRING },
-          correlation: { type: Type.STRING, enum: ["high", "medium", "low"] },
+          correlation: { type: Type.STRING },
           insight: { type: Type.STRING }
         }
       }
@@ -125,7 +120,7 @@ const reportSchema = {
           items: {
             type: Type.OBJECT,
             properties: {
-              id: { type: Type.STRING, enum: ["inertia", "partial", "total"] },
+              id: { type: Type.STRING },
               name: { type: Type.STRING },
               adherence_level: { type: Type.STRING },
               description: { type: Type.STRING },
@@ -148,52 +143,43 @@ const reportSchema = {
       }
     }
   },
-  required: ["analise_fisiologica", "riscos_identificados", "comparativo_dados", "metabolic_simulation"]
+  required: ["analise_fisiologica", "riscos_identificados", "metabolic_simulation"]
 };
 
 export const generateMetabolicReport = async (patientData: PatientData): Promise<ReportData> => {
   try {
-    const systemPrompt = `
-      Você é o "Auditor Clínico Sênior" do NutriVision AI.
-      Sua função é realizar a "Data Fusion": Validar se o que o exame de papel diz condiz com o fenótipo visual.
-      Utilize a ferramenta de busca para basear seus planos e referências em diretrizes médicas atuais (OMS, ABESO, SBC).
-      
-      IMPORTANTE:
-      - Seja conciso.
-      - "curve_data": Gere 5 pontos (meses 0, 6, 12, 18, 24).
+    const systemInstruction = `
+      Você é o "Auditor Clínico Sênior". Realize a fusão de dados entre os exames laboratoriais e o fenótipo visual.
+      Use o Google Search para referenciar diretrizes médicas reais (ABESO, SBC, OMS).
+      Produza uma simulação de futuro baseada no modelo de Kevin Hall.
     `;
 
-    const userContent = `
+    const userPrompt = `
       PACIENTE: ${patientData.name}, ${patientData.age} anos, ${patientData.gender}.
       BIOMETRIA: Peso ${patientData.weight}kg, Altura ${patientData.height}cm.
       OBJETIVO: ${patientData.clinicalGoal}.
-      DADOS ADICIONAIS: Glicemia ${patientData.glucose || 'N/A'}, Colesterol ${patientData.cholesterol || 'N/A'}.
+      EXTRAS: Glicemia ${patientData.glucose || 'N/A'}, Gordura Corporal ${patientData.bioimpedanceBF || 'N/A'}%.
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: userContent,
+      model: "gemini-3-pro-preview", // Roteado para o modelo de alta inteligência
+      contents: userPrompt,
       config: {
-        systemInstruction: systemPrompt,
+        systemInstruction,
         responseMimeType: "application/json",
         responseSchema: reportSchema,
-        temperature: 0.1,
-        tools: [{ googleSearch: {} }] // Ativa busca para grounding científico
+        temperature: 0.2,
+        thinkingConfig: { thinkingBudget: 4000 }, // Habilita o raciocínio profundo para o diagnóstico
+        tools: [{ googleSearch: {} }] // Grounding científico ativado
       }
     });
 
-    const responseText = response.text;
-    if (!responseText) throw new Error("Resposta da IA vazia.");
+    const text = response.text;
+    if (!text) throw new Error("IA não retornou dados.");
     
-    const parsedData = JSON.parse(cleanJsonString(responseText)) as ReportData;
-
-    // Se a IA retornar fontes no groundingMetadata, poderíamos injetá-las aqui, 
-    // mas o schema já pede para a IA listar as referências textualmente.
-    
-    return parsedData;
-
+    return JSON.parse(cleanJsonString(text)) as ReportData;
   } catch (error) {
-    console.error("Erro ao gerar relatório:", error);
-    throw new Error("Falha na simulação metabólica.");
+    console.error("Erro no relatório Pro:", error);
+    throw new Error("Falha ao processar inteligência clínica.");
   }
 };
