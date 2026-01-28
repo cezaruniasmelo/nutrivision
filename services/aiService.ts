@@ -159,11 +159,37 @@ export const generateMetabolicReport = async (patientData: PatientData): Promise
       BIOMETRIA: Peso ${patientData.weight}kg, Altura ${patientData.height}cm.
       OBJETIVO: ${patientData.clinicalGoal}.
       EXTRAS: Glicemia ${patientData.glucose || 'N/A'}, Gordura Corporal ${patientData.bioimpedanceBF || 'N/A'}%.
+      
+      IMPORTANTE: Analise as imagens do scanner corporal (se fornecidas) para:
+      1. Identificar composição corporal visual (definição muscular, dobras cutâneas).
+      2. Notar marcas visíveis, assimetrias ou características dermatológicas importantes (verrugas, manchas) para o prontuário.
+      3. Estimar pontos de corte para antropometria (circunferência de braço, cintura) se visível.
+      4. Correlacionar a postura visual com o risco metabólico.
     `;
+
+    const parts: any[] = [{ text: userPrompt }];
+
+    // Add Scan Images if available
+    if (patientData.scanSession) {
+      const addImage = (label: string, dataUrl?: string) => {
+        if (dataUrl) {
+          // Remove prefix data:image/jpeg;base64,
+          const base64Data = dataUrl.split(',')[1];
+          if (base64Data) {
+            parts.push({ text: `[Imagem: ${label}]` });
+            parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
+          }
+        }
+      };
+
+      addImage("Vista Frontal", patientData.scanSession.frontImage);
+      addImage("Vista Lateral", patientData.scanSession.sideImage);
+      addImage("Vista Traseira", patientData.scanSession.backImage);
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview", // Roteado para o modelo de alta inteligência
-      contents: userPrompt,
+      contents: { parts },
       config: {
         systemInstruction,
         responseMimeType: "application/json",

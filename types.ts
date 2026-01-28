@@ -12,36 +12,41 @@ export interface ScanSession {
   frontLandmarks: any[] | null;
   sideLandmarks: any[] | null;
   backLandmarks: any[] | null;
-  
+
   // Lower Body (Legs) - Secondary
   frontLegsLandmarks?: any[] | null;
   sideLegsLandmarks?: any[] | null;
   backLegsLandmarks?: any[] | null;
 
   timestamp: number;
+
+  // Captured Images (Base64)
+  frontImage?: string;
+  sideImage?: string;
+  backImage?: string;
 }
 
 export interface PatientData {
   id?: string; // New: Unique ID for selection
   lastVisit?: string; // New: Date string
   photoURL?: string; // New: URL da foto do paciente
-  
+
   // Personal Info
   name: string;
   age: number;
   gender: Gender;
-  
+
   // Clinical Metrics (Inputs Manuais/Upload)
   weight: number; // in kg
   height: number; // in cm
   glucose?: number;
   cholesterol?: number;
   bioimpedanceBF?: number; // Body Fat from bioimpedance scale if available
-  
+
   // Qualitative
   clinicalGoal: ClinicalGoal;
   patientSentiment?: string;
-  
+
   // Capture Data (Vision AI)
   scanSession?: ScanSession;
 }
