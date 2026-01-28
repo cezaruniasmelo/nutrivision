@@ -20,7 +20,16 @@ export interface ScanSession {
 
   timestamp: number;
 
-  // Captured Images (Base64)
+  // Captured Images (Base64) - 7 Phase Scan
+  faceNeckImage?: string;     // Phase 1: Rosto & Pescoço
+  frontUpperImage?: string;   // Phase 2: Frente Superior
+  frontLowerImage?: string;   // Phase 3: Frente Inferior
+  sideUpperImage?: string;    // Phase 4: Perfil Superior
+  sideLowerImage?: string;    // Phase 5: Perfil Inferior
+  backUpperImage?: string;    // Phase 6: Costas Superior
+  backLowerImage?: string;    // Phase 7: Costas Inferior
+
+  // Legacy/Fallback (optional)
   frontImage?: string;
   sideImage?: string;
   backImage?: string;
@@ -98,7 +107,7 @@ export interface ReportData {
 
 // Controle de Navegação do App
 // 'patient_select' added
-export type AppView = 'patient_select' | 'dashboard' | 'register' | 'scan' | 'simulation';
+export type AppView = 'patient_select' | 'dashboard' | 'register' | 'scan' | 'review' | 'simulation';
 
 export interface TimelineEvent {
   id: string;

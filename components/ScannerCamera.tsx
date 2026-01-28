@@ -12,8 +12,8 @@ const POSE_CONNECTIONS = [
     [27, 31], [28, 32], [29, 31], [30, 32]
 ];
 
-// Scan Phases
-type ScanPhase = 'front_upper' | 'front_lower' | 'side_upper' | 'side_lower' | 'back_upper' | 'back_lower' | 'complete';
+// Expanded Scan Phases (7 Steps)
+type ScanPhase = 'face_neck' | 'front_upper' | 'front_lower' | 'side_upper' | 'side_lower' | 'back_upper' | 'back_lower' | 'complete';
 
 interface PoseInstruction {
     message: string;
@@ -32,7 +32,7 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
     const isMounted = useRef<boolean>(true);
 
     // State
-    const [currentPhase, setCurrentPhase] = useState<ScanPhase>('front_upper');
+    const [currentPhase, setCurrentPhase] = useState<ScanPhase>('face_neck');
     const [sessionData, setSessionData] = useState<ScanSession>({
         frontLandmarks: null,
         frontLegsLandmarks: null,
@@ -40,9 +40,6 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
         sideLegsLandmarks: null,
         backLandmarks: null,
         backLegsLandmarks: null,
-        frontImage: undefined,
-        sideImage: undefined,
-        backImage: undefined,
         timestamp: Date.now()
     });
 
@@ -95,16 +92,32 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
         }
 
         const nose = landmarks[0];
+        const leftEye = landmarks[2];
+        const rightEye = landmarks[5];
         const leftShoulder = landmarks[11];
         const rightShoulder = landmarks[12];
-        const leftHip = landmarks[23];
-        const rightHip = landmarks[24];
         const leftKnee = landmarks[25];
         const rightKnee = landmarks[26];
 
         const isVisible = (point: any) => point && point.visibility > 0.6;
 
-        // Phase Logic
+        // --- PHASE 0: FACE & NECK ---
+        if (phase === 'face_neck') {
+            if (!isVisible(nose) || !isVisible(leftEye) || !isVisible(rightEye)) {
+                return { message: 'Aproxime o ROSTO da câmera', type: 'warning', progress: 0 };
+            }
+            // Check if too far (shoulders should be visible but face dominant)
+            if (!isVisible(leftShoulder) && !isVisible(rightShoulder)) {
+                return { message: 'Afaste um pouco para mostrar o PESCOÇO', type: 'warning', progress: 0 };
+            }
+            // Center check
+            if (nose.x < 0.3 || nose.x > 0.7 || nose.y < 0.2 || nose.y > 0.8) {
+                return { message: 'Centralize o Rosto', type: 'warning', progress: 0 };
+            }
+            return { message: 'Perfeito! Não se mexa...', type: 'success', progress: 0 };
+        }
+
+        // --- PHASE 1, 3, 5: UPPER BODY (TORSO) ---
         if (phase.includes('upper')) {
             if (!isVisible(nose) || !isVisible(leftShoulder) || !isVisible(rightShoulder)) {
                 return { message: 'Enquadre Cabeça e Ombros', type: 'warning', progress: 0 };
@@ -112,20 +125,18 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
 
             const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
 
-            // Front/Back check
-            if ((phase.includes('front') || phase.includes('back'))) {
-                if (shoulderWidth < 0.1) return { message: 'Aproxime-se um pouco', type: 'warning', progress: 0 };
-                // Simple check for rotation: shoulders should be roughly same Z or at least distinct width
-            }
-
             // Side check
             if (phase.includes('side')) {
                 if (shoulderWidth > 0.25) return { message: 'Vire de PERFIL', type: 'warning', progress: 0 };
+            } else {
+                // Front/Back
+                if (shoulderWidth < 0.1) return { message: 'Aproxime-se', type: 'warning', progress: 0 };
             }
 
             return { message: 'Mantenha a Posição...', type: 'success', progress: 0 };
         }
 
+        // --- PHASE 2, 4, 6: LOWER BODY (LEGS) ---
         if (phase.includes('lower')) {
             if (!isVisible(leftKnee) && !isVisible(rightKnee)) {
                 return { message: 'Enquadre as PERNAS', type: 'warning', progress: 0 };
@@ -136,44 +147,75 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
         return { message: 'Aguarde...', type: 'neutral', progress: 0 };
     };
 
+    // Helper: Resize Image
+    const resizeImage = (dataUrl: string, maxWidth: number): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = dataUrl;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const scale = Math.min(1, maxWidth / img.width, maxWidth / img.height); // Scale based on max of width or height
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to 70% quality
+                } else {
+                    resolve(dataUrl);
+                }
+            };
+            img.onerror = () => resolve(dataUrl);
+        });
+    };
+
     // 3. Capture Phase
-    const capturePhase = (phase: ScanPhase, landmarks: any[]) => {
+    const capturePhase = async (phase: ScanPhase, landmarks: any[]) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
         // Capture Image (Snapshot)
-        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+        const rawImageData = canvas.toDataURL('image/jpeg', 0.85);
+        const compressedImage = await resizeImage(rawImageData, 800); // Max 800px
 
         const newSession = { ...sessionData };
 
-        // Store Landmarks & Images based on phase
-        if (phase === 'front_upper') {
-            newSession.frontLandmarks = landmarks;
-            newSession.frontImage = imageData; // Save front image
-            setCurrentPhase('front_lower');
-        }
-        else if (phase === 'front_lower') {
-            newSession.frontLegsLandmarks = landmarks;
-            setCurrentPhase('side_upper');
-        }
-        else if (phase === 'side_upper') {
-            newSession.sideLandmarks = landmarks;
-            newSession.sideImage = imageData; // Save side image
-            setCurrentPhase('side_lower');
-        }
-        else if (phase === 'side_lower') {
-            newSession.sideLegsLandmarks = landmarks;
-            setCurrentPhase('back_upper');
-        }
-        else if (phase === 'back_upper') {
-            newSession.backLandmarks = landmarks;
-            newSession.backImage = imageData; // Save back image
-            setCurrentPhase('back_lower');
-        }
-        else if (phase === 'back_lower') {
-            newSession.backLegsLandmarks = landmarks;
-            setCurrentPhase('complete');
-            onScanComplete(newSession);
+        switch (phase) {
+            case 'face_neck':
+                newSession.faceNeckImage = compressedImage;
+                setCurrentPhase('front_upper');
+                break;
+            case 'front_upper':
+                newSession.frontLandmarks = landmarks;
+                newSession.frontUpperImage = compressedImage;
+                setCurrentPhase('front_lower');
+                break;
+            case 'front_lower':
+                newSession.frontLegsLandmarks = landmarks;
+                newSession.frontLowerImage = compressedImage;
+                setCurrentPhase('side_upper');
+                break;
+            case 'side_upper':
+                newSession.sideLandmarks = landmarks;
+                newSession.sideUpperImage = compressedImage;
+                setCurrentPhase('side_lower');
+                break;
+            case 'side_lower':
+                newSession.sideLegsLandmarks = landmarks;
+                newSession.sideLowerImage = compressedImage;
+                setCurrentPhase('back_upper');
+                break;
+            case 'back_upper':
+                newSession.backLandmarks = landmarks;
+                newSession.backUpperImage = compressedImage;
+                setCurrentPhase('back_lower');
+                break;
+            case 'back_lower':
+                newSession.backLegsLandmarks = landmarks;
+                newSession.backLowerImage = compressedImage;
+                setCurrentPhase('complete');
+                onScanComplete(newSession);
+                break;
         }
 
         setSessionData(newSession);
@@ -181,7 +223,6 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
     };
 
     const manualCapture = () => {
-        // Allow manual capture even if landmarks aren't perfect (fallback)
         const landmarks = lastLandmarksRef.current || [];
         capturePhase(currentPhase, landmarks);
     };
@@ -216,33 +257,22 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
             }
         };
 
-        // Draw Key Anthropometric Points
-        // Shoulders
-        drawPoint(11, '#ffeb3b'); // Left Shoulder
-        drawPoint(12, '#ffeb3b'); // Right Shoulder
-
-        // Hips (Waist ref)
-        drawPoint(23, '#ff9800'); // Left Hip
-        drawPoint(24, '#ff9800'); // Right Hip
-
-        // Knees
-        drawPoint(25, '#03a9f4');
-        drawPoint(26, '#03a9f4');
-
-        // Mid-Arm (Estimate)
-        if (landmarks[11] && landmarks[13]) {
-            const midX = (landmarks[11].x + landmarks[13].x) / 2;
-            const midY = (landmarks[11].y + landmarks[13].y) / 2;
-            ctx.beginPath();
-            ctx.arc(midX * ctx.canvas.width, midY * ctx.canvas.height, 4, 0, 2 * Math.PI);
-            ctx.fillStyle = '#ff4081'; // Pink for muscle points
-            ctx.fill();
+        // Draw Key Anthropometric Points based on phase
+        if (currentPhase === 'face_neck') {
+            // Draw Face Landmarks
+            drawPoint(0, '#ff4081'); // Nose
+            drawPoint(2, '#03a9f4'); // Left Eye
+            drawPoint(5, '#03a9f4'); // Right Eye
+            drawLine(11, 12, 'rgba(255, 235, 59, 0.5)'); // Shoulders (neck base)
+        } else {
+            // Body landmarks
+            drawPoint(11, '#ffeb3b'); // Shoulders
+            drawPoint(12, '#ffeb3b');
+            drawPoint(23, '#ff9800'); // Hips
+            drawPoint(24, '#ff9800');
+            drawPoint(25, '#03a9f4'); // Knees
+            drawPoint(26, '#03a9f4');
         }
-
-        // Draw Chest Line
-        drawLine(11, 12, 'rgba(255, 235, 59, 0.5)');
-        // Draw Hip Line
-        drawLine(23, 24, 'rgba(255, 152, 0, 0.5)');
     };
 
     // 5. MediaPipe Loop
@@ -286,7 +316,7 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
 
             // Visuals
             const globalDrawConnectors = (window as any).drawConnectors;
-            if (globalDrawConnectors) {
+            if (globalDrawConnectors && currentPhase !== 'face_neck') {
                 globalDrawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {
                     color: result.type === 'success' ? '#14b8a6' : 'rgba(255,255,255,0.2)',
                     lineWidth: 2,
@@ -391,6 +421,7 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
     // UI Helpers
     const getPhaseLabel = (phase: ScanPhase) => {
         switch (phase) {
+            case 'face_neck': return 'Rosto & Pescoço (Biomarcadores)';
             case 'front_upper': return 'Frente: Tronco (Peito/Abdomen)';
             case 'front_lower': return 'Frente: Pernas';
             case 'side_upper': return 'Perfil: Tronco';
@@ -400,6 +431,8 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
             default: return 'Processando...';
         }
     };
+
+    const currentStepIndex = ['face_neck', 'front_upper', 'front_lower', 'side_upper', 'side_lower', 'back_upper', 'back_lower'].indexOf(currentPhase);
 
     return (
         <div className="relative h-full w-full bg-black rounded-xl overflow-hidden shadow-2xl flex flex-col">
@@ -419,13 +452,9 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
 
             {/* Progress Bar Top */}
             <div className="absolute top-0 inset-x-0 h-2 flex z-30 bg-slate-900">
-                {['front', 'side', 'back'].map((stage, idx) => {
-                    const isActive = idx <= ['front', 'side', 'back'].indexOf(currentPhase.split('_')[0]);
-                    const isCompleted = (sessionData as any)[`${stage}Image`] !== undefined;
-                    return (
-                        <div key={stage} className={`flex-1 transition-all duration-300 ${isCompleted ? 'bg-brand-500' : isActive ? 'bg-brand-500/30' : 'bg-slate-800'}`}></div>
-                    );
-                })}
+                {Array.from({ length: 7 }).map((_, idx) => (
+                    <div key={idx} className={`flex-1 border-r border-black transition-all duration-300 ${idx < currentStepIndex ? 'bg-brand-500' : idx === currentStepIndex ? 'bg-brand-500/50 animate-pulse' : 'bg-slate-800'}`}></div>
+                ))}
             </div>
 
             {/* Camera Selector */}
@@ -456,22 +485,22 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
                 {/* Manual Capture Button */}
                 <button
                     onClick={manualCapture}
-                    className="absolute bottom-32 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center group"
+                    className="absolute bottom-32 right-8 z-40 flex flex-col items-center group active:scale-95 transition-transform"
                 >
-                    <div className="w-16 h-16 rounded-full border-4 border-white group-hover:border-brand-500 transition-all flex items-center justify-center bg-white/10 backdrop-blur-sm">
-                        <div className="w-12 h-12 rounded-full bg-white group-hover:scale-90 transition-transform"></div>
+                    <div className="w-14 h-14 rounded-full border-4 border-white group-hover:border-brand-500 transition-all flex items-center justify-center bg-white/10 backdrop-blur-sm">
+                        <div className="w-10 h-10 rounded-full bg-white group-hover:bg-brand-500 transition-colors"></div>
                     </div>
-                    <span className="text-white text-xs font-bold mt-2 opacity-80 shadow-black drop-shadow-md">Capturar Manual</span>
+                    <span className="text-white text-[10px] font-bold mt-2 opacity-80 shadow-black drop-shadow-md">Manual</span>
                 </button>
 
                 {/* Scan Line Animation */}
-                <div className={`absolute left-0 right-0 h-1 bg-brand-400 shadow-[0_0_15px_#2dd4bf] opacity-50 pointer-events-none animate-scan ${currentPhase.includes('upper') ? 'top-1/4' : 'top-3/4'
+                <div className={`absolute left-0 right-0 h-1 bg-brand-400 shadow-[0_0_15px_#2dd4bf] opacity-50 pointer-events-none animate-scan ${currentPhase.includes('upper') || currentPhase === 'face_neck' ? 'top-1/4' : 'top-3/4'
                     }`}></div>
             </div>
 
             {/* Bottom Instructions HUD */}
             <div className="absolute bottom-0 inset-x-0 pb-8 pt-24 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent flex flex-col items-center z-30 pointer-events-none">
-                <h3 className="text-white text-sm font-bold uppercase tracking-widest mb-4 opacity-80 drop-shadow-md">{getPhaseLabel(currentPhase)}</h3>
+                <h3 className="text-white text-sm font-bold uppercase tracking-widest mb-4 opacity-80 drop-shadow-md text-center">{getPhaseLabel(currentPhase)}</h3>
 
                 <div className={`
                 px-6 py-3 rounded-xl backdrop-blur-md border shadow-2xl transition-all duration-300 transform
@@ -484,11 +513,9 @@ const ScannerCamera: React.FC<ScannerCameraProps> = ({ onScanComplete }) => {
                     </p>
                 </div>
 
-                {/* Anthropometry Hint */}
-                <div className="mt-4 flex gap-4 text-[10px] text-slate-400 uppercase tracking-wider font-bold">
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ffeb3b]"></div>Ombros</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ff9800]"></div>Cintura</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#03a9f4]"></div>Pernas</div>
+                {/* Simple Step Indicator */}
+                <div className="mt-4 text-[10px] text-slate-500 font-mono">
+                    Passo {currentStepIndex + 1} de 7
                 </div>
             </div>
         </div>

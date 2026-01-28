@@ -160,16 +160,26 @@ export const generateMetabolicReport = async (patientData: PatientData): Promise
       OBJETIVO: ${patientData.clinicalGoal}.
       EXTRAS: Glicemia ${patientData.glucose || 'N/A'}, Gordura Corporal ${patientData.bioimpedanceBF || 'N/A'}%.
       
-      IMPORTANTE: Analise as imagens do scanner corporal (se fornecidas) para:
-      1. Identificar composição corporal visual (definição muscular, dobras cutâneas).
-      2. Notar marcas visíveis, assimetrias ou características dermatológicas importantes (verrugas, manchas) para o prontuário.
-      3. Estimar pontos de corte para antropometria (circunferência de braço, cintura) se visível.
-      4. Correlacionar a postura visual com o risco metabólico.
+      IMPORTANTE - ANÁLISE VISUAL (7 FASES):
+      Analise as imagens fornecidas detalhadamente.
+      
+      PROTOCOLO DE FALHAS (ROBUSTZED):
+      - Se alguma imagem estiver escura, borrada ou irreconhecível, IGNORE-A.
+      - NÃO PARAR A ANÁLISE. Continue com as imagens visíveis.
+      - Se uma imagem for descartada, adicione um aviso em "riscos_identificados": "Imagem [X] descartada por baixa qualidade".
+      
+      Análise desejada (se visível):
+      1. ROSTO/PESCOÇO: Estime "Idade Visual" vs Real. Sinais de envelhecimento, saúde da pele (manchas, hidratação), circunferência de pescoço (risco metabólico).
+      2. TRONCO: Definição muscular, gordura visceral aparente, ginecomastia (se masc).
+      3. POSTURA: Cifose, lordose ou desvios visíveis nas fotos de perfil/costas.
+      4. DERMATO: Mencione estrias, verrugas, manchas ou acantose nigricans (pescoço/axilas).
+      
+      Gere insights na seção "analise_fisiologica" e "riscos_identificados". SEMPRE RETORNE JSON VÁLIDO.
     `;
 
     const parts: any[] = [{ text: userPrompt }];
 
-    // Add Scan Images if available
+    // Add 7-Phase Scan Images
     if (patientData.scanSession) {
       const addImage = (label: string, dataUrl?: string) => {
         if (dataUrl) {
@@ -182,25 +192,44 @@ export const generateMetabolicReport = async (patientData: PatientData): Promise
         }
       };
 
-      addImage("Vista Frontal", patientData.scanSession.frontImage);
-      addImage("Vista Lateral", patientData.scanSession.sideImage);
-      addImage("Vista Traseira", patientData.scanSession.backImage);
+      addImage("1. Rosto e Pescoço", patientData.scanSession.faceNeckImage);
+      addImage("2. Frente Superior (Peito/Abs)", patientData.scanSession.frontUpperImage);
+      addImage("3. Frente Inferior (Pernas)", patientData.scanSession.frontLowerImage);
+      addImage("4. Perfil Superior", patientData.scanSession.sideUpperImage);
+      addImage("5. Perfil Inferior", patientData.scanSession.sideLowerImage);
+      addImage("6. Costas Superior", patientData.scanSession.backUpperImage);
+      addImage("7. Costas Inferior", patientData.scanSession.backLowerImage);
+
+      // Fallbacks for legacy/single captures if present and detailed are missing
+      if (!patientData.scanSession.faceNeckImage && patientData.scanSession.frontImage) {
+        addImage("Vista Geral Frente", patientData.scanSession.frontImage);
+        addImage("Vista Geral Lado", patientData.scanSession.sideImage);
+        addImage("Vista Geral Costas", patientData.scanSession.backImage);
+      }
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", // Roteado para o modelo de alta inteligência
+    // Generate Content with Timeout (65s limit to prevent infinite hanging)
+    const timeoutPromise = new Promise<{ text: () => string }>((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout: A análise demorou muito. Tente novamente com menos imagens ou internet melhor.")), 65000)
+    );
+
+    const apiPromise = ai.models.generateContent({
+      model: "gemini-3-pro-preview",
       contents: { parts },
       config: {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: reportSchema,
         temperature: 0.2,
-        thinkingConfig: { thinkingBudget: 4000 }, // Habilita o raciocínio profundo para o diagnóstico
-        tools: [{ googleSearch: {} }] // Grounding científico ativado
+        thinkingConfig: { thinkingBudget: 4000 },
+        tools: [{ googleSearch: {} }]
       }
     });
 
-    const text = response.text;
+    const response = await Promise.race([apiPromise, timeoutPromise]);
+
+    // Type assertion for compatibility if race returns different shapes, but here we expect generateContent response structure
+    const text = (response as any).text ? (response as any).text() : (response as any).text;
     if (!text) throw new Error("IA não retornou dados.");
 
     return JSON.parse(cleanJsonString(text)) as ReportData;

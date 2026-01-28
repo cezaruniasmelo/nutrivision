@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ScannerCamera from './components/ScannerCamera';
+import ScanReview from './components/ScanReview';
 import SmartIntake from './components/SmartIntake';
 import PatientDashboard from './components/PatientDashboard';
 import PredictiveSimulator from './components/PredictiveSimulator';
@@ -17,10 +18,10 @@ import { Gender, PatientData, AppView, ReportData, ScanSession } from './types';
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  
+
   const [currentView, setCurrentView] = useState<AppView>('patient_select');
   const [patientData, setPatientData] = useState<PatientData | null>(null);
-  
+
   const [patientsList, setPatientsList] = useState<PatientData[]>([]);
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
 
@@ -33,7 +34,7 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
-      
+
       if (currentUser) {
         loadPatients(currentUser.uid);
       } else {
@@ -90,7 +91,7 @@ const App: React.FC = () => {
     if (!user) return;
 
     try {
-      setIsGenerating(true); 
+      setIsGenerating(true);
       const newId = await createPatientInFirestore(user.uid, data, photoFile);
       const newPatientWithId = { ...data, id: newId, lastVisit: new Date().toLocaleDateString('pt-BR') };
       setPatientData(newPatientWithId);
@@ -113,11 +114,12 @@ const App: React.FC = () => {
     setIsGenerating(true);
     try {
       if (patientData.id) {
-         await addAssessmentToHistory(user.uid, patientData.id, updatedPatientData);
+        await addAssessmentToHistory(user.uid, patientData.id, updatedPatientData);
       }
       const report = await generateMetabolicReport(updatedPatientData);
       setReportData(report);
-      setCurrentView('simulation');
+      setReportData(report);
+      setCurrentView('review');
     } catch (error) {
       console.error(error);
       alert("Erro ao gerar relatório.");
@@ -127,11 +129,11 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => { setReportData(null); setCurrentView('dashboard'); };
-  
+
   const handleChangePatient = () => {
-      setPatientData(null);
-      setReportData(null);
-      setCurrentView('patient_select');
+    setPatientData(null);
+    setReportData(null);
+    setCurrentView('patient_select');
   };
 
   const handleLogout = async () => { try { await signOut(auth); } catch (error) { console.error("Logout Error", error); } };
@@ -160,7 +162,7 @@ const App: React.FC = () => {
             NutriVision <span className="text-brand-500">AI</span>
           </h1>
         </div>
-        
+
         {currentView !== 'patient_select' && currentView !== 'dashboard' && (
           <div className="hidden md:flex items-center bg-slate-800 rounded-full p-1 border border-slate-700">
             <div className={`h-2 rounded-full transition-all duration-500 ${currentView === 'register' ? 'bg-brand-500 w-16' : 'bg-transparent w-4'}`}></div>
@@ -170,96 +172,104 @@ const App: React.FC = () => {
         )}
 
         <div className="flex items-center gap-6">
-             <div 
-               className="text-right hidden sm:block cursor-pointer hover:opacity-80 transition-opacity"
-               onClick={() => setIsProfileModalOpen(true)}
-             >
-                <p className="text-base font-bold text-white leading-none">{user.displayName || 'Profissional'}</p>
-                <p className="text-[10px] text-brand-500 font-bold uppercase tracking-widest mt-1">Configurar Perfil</p>
-             </div>
-             
-             <button 
-                onClick={() => setIsProfileModalOpen(true)}
-                className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 overflow-hidden hover:border-brand-500 transition-all flex items-center justify-center"
-             >
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="User" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-brand-500 font-bold">{user.displayName ? user.displayName.charAt(0) : 'P'}</span>
-                )}
-             </button>
+          <div
+            className="text-right hidden sm:block cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => setIsProfileModalOpen(true)}
+          >
+            <p className="text-base font-bold text-white leading-none">{user.displayName || 'Profissional'}</p>
+            <p className="text-[10px] text-brand-500 font-bold uppercase tracking-widest mt-1">Configurar Perfil</p>
+          </div>
 
-             <button 
-                onClick={handleLogout}
-                className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-slate-700"
-                title="Sair"
-             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-             </button>
+          <button
+            onClick={() => setIsProfileModalOpen(true)}
+            className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 overflow-hidden hover:border-brand-500 transition-all flex items-center justify-center"
+          >
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="User" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-brand-500 font-bold">{user.displayName ? user.displayName.charAt(0) : 'P'}</span>
+            )}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all border border-slate-700"
+            title="Sair"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
         </div>
       </header>
 
       <main className="flex-1 overflow-hidden relative">
         {currentView === 'patient_select' && (
-            <PatientSelectScreen 
-                patients={patientsList}
-                isLoading={isLoadingPatients}
-                onSelectPatient={handleSelectPatient} 
-                onNewPatient={handleNewPatientClick}
-                onLoadDemoData={handleLoadDemoData}
-                userName={user.displayName || 'Profissional'}
-            />
+          <PatientSelectScreen
+            patients={patientsList}
+            isLoading={isLoadingPatients}
+            onSelectPatient={handleSelectPatient}
+            onNewPatient={handleNewPatientClick}
+            onLoadDemoData={handleLoadDemoData}
+            userName={user.displayName || 'Profissional'}
+          />
         )}
         {currentView === 'register' && patientData && (
           <div className="h-full relative">
-             {isGenerating && (
-                <div className="absolute inset-0 bg-slate-900/80 backdrop-blur z-50 flex flex-col items-center justify-center">
-                    <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-white font-bold">Salvando Paciente & Foto...</p>
-                </div>
-             )}
-             <SmartIntake initialData={patientData} onComplete={handleRegistrationComplete} />
+            {isGenerating && (
+              <div className="absolute inset-0 bg-slate-900/80 backdrop-blur z-50 flex flex-col items-center justify-center">
+                <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-white font-bold">Salvando Paciente & Foto...</p>
+              </div>
+            )}
+            <SmartIntake initialData={patientData} onComplete={handleRegistrationComplete} />
           </div>
         )}
         {currentView === 'dashboard' && patientData && (
-          <PatientDashboard 
-            onNewScan={handleStartScan} 
-            professionalName={user.displayName || 'Profissional'} 
+          <PatientDashboard
+            onNewScan={handleStartScan}
+            professionalName={user.displayName || 'Profissional'}
             patientData={patientData}
             onChangePatient={handleChangePatient}
           />
         )}
         {currentView === 'scan' && (
-            <div className="h-full flex flex-col items-center justify-center p-6 bg-slate-900">
-                {isGenerating ? (
-                    <div className="flex flex-col items-center animate-fadeIn">
-                        <div className="w-20 h-20 border-8 border-brand-500 border-t-transparent rounded-full animate-spin mb-8"></div>
-                        <h2 className="text-3xl font-bold text-white mb-2">Processando 360º & Dados</h2>
-                        <p className="text-slate-400">O Gemini está correlacionando Exames + Volumetria...</p>
-                    </div>
-                ) : (
-                    <div className="w-full max-w-5xl h-[85vh] relative rounded-[2.5rem] overflow-hidden border-4 border-slate-800 shadow-2xl">
-                        <ScannerCamera onScanComplete={handleScanComplete} />
-                    </div>
-                )}
-            </div>
+          <div className="h-full flex flex-col items-center justify-center p-6 bg-slate-900">
+            {isGenerating ? (
+              <div className="flex flex-col items-center animate-fadeIn">
+                <div className="w-20 h-20 border-8 border-brand-500 border-t-transparent rounded-full animate-spin mb-8"></div>
+                <h2 className="text-3xl font-bold text-white mb-2">Processando 360º & Dados</h2>
+                <p className="text-slate-400">O Gemini está correlacionando Exames + Volumetria...</p>
+              </div>
+            ) : (
+              <div className="w-full max-w-5xl h-[85vh] relative rounded-[2.5rem] overflow-hidden border-4 border-slate-800 shadow-2xl">
+                <ScannerCamera onScanComplete={handleScanComplete} />
+              </div>
+            )}
+          </div>
+        )}
+        {currentView === 'review' && patientData && patientData.scanSession && (
+          <ScanReview
+            session={patientData.scanSession}
+            reportData={reportData}
+            onProceed={() => setCurrentView('simulation')}
+            isProcessing={isGenerating}
+          />
         )}
         {currentView === 'simulation' && reportData && (
           <PredictiveSimulator reportData={reportData} onReset={handleReset} />
         )}
       </main>
 
-      <UserProfileModal 
-        user={user} 
-        isOpen={isProfileModalOpen} 
+      <UserProfileModal
+        user={user}
+        isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         onUpdate={async () => {
-           if (auth.currentUser) {
-             await auth.currentUser.reload();
-             setUser({ ...auth.currentUser } as User); 
-           }
+          if (auth.currentUser) {
+            await auth.currentUser.reload();
+            setUser({ ...auth.currentUser } as User);
+          }
         }}
       />
     </div>
